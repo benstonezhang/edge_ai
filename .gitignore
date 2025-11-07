@@ -1,0 +1,10 @@
+.stfolder
+.stignore
+.DS_Store
+/.idea
+/.run
+*.swp
+*.pyc
+*.pyo
+*.egg
+__pycache__
