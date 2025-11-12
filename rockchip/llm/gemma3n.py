@@ -7,30 +7,32 @@ from .base import MultiModalModel
 
 class Gemma3nVisionForOnnx(torch.nn.Module):
     def __init__(self, vlm: Gemma3nModel):
-        super(Gemma3nVisionForOnnx, self).__init__()
-        self.vpm = vlm.vision_tower
-        self.embed = vlm.embed_vision
-        self.hidden_size = vlm.config.vision_config.hidden_size
-        self.vision_soft_tokens_per_image = vlm.config.vision_soft_tokens_per_image
+        super().__init__()
+        self.vpm = vlm
+        # self.vpm = vlm.vision_tower
+        # self.embed = vlm.embed_vision
+        # self.hidden_size = vlm.config.vision_config.hidden_size
+        # self.vision_soft_tokens_per_image = vlm.config.vision_soft_tokens_per_image
 
     def forward(self, pixel_values):
-        vision_outputs = self.vpm(pixel_values=pixel_values, do_pooling=False,
-                                  return_dict=True).last_hidden_state
-        # Convert from (batch, channels, height, width) to (batch, height * width, channels) where:
-        # height == width and height * width == Gemma3nConfig.vision_soft_tokens_per_image.
-        vision_outputs = vision_outputs.reshape(vision_outputs.shape[0], self.hidden_size,
-                                                self.vision_soft_tokens_per_image).permute(0, 2, 1)
-        # Normalize and embed the soft tokens into language model space.
-        vision_outputs *= self.hidden_size ** 0.5
-        image_hidden_states = self.embed(inputs_embeds=vision_outputs)
-        print('image_features:', image_hidden_states.shape)
-        return image_hidden_states
+        return self.vlm.get_image_features(pixel_values)
+        # vision_outputs = self.vpm(pixel_values=pixel_values, do_pooling=False,
+        #                           return_dict=True).last_hidden_state
+        # # Convert from (batch, channels, height, width) to (batch, height * width, channels) where:
+        # # height == width and height * width == Gemma3nConfig.vision_soft_tokens_per_image.
+        # vision_outputs = vision_outputs.reshape(vision_outputs.shape[0], self.hidden_size,
+        #                                         self.vision_soft_tokens_per_image).permute(0, 2, 1)
+        # # Normalize and embed the soft tokens into language model space.
+        # vision_outputs *= self.hidden_size ** 0.5
+        # image_hidden_states = self.embed(inputs_embeds=vision_outputs)
+        # print('image_features:', image_hidden_states.shape)
+        # return image_hidden_states
 
 
 class Gemma3nMultiModalModel(MultiModalModel):
     @override
     @classmethod
-    def from_pretrained(cls, *args, **kwargs):
+    def from_pretrained(cls, *args, batch_size=1, height=None, width=None, **kwargs):
         self = cls.__new__(cls)
         self.generation_model = Gemma3nForConditionalGeneration.from_pretrained(*args, **kwargs)
         self.model = self.generation_model.model

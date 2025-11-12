@@ -28,7 +28,7 @@ class MultiModalModel(ABC):
 
     @property
     def vision_std(self):
-        return [127.5, 127.5, 127.5]
+        return [63.75, 63.75, 63.75]
 
     @abstractmethod
     def get_input_embeddings(self, processor: AutoProcessor, text_input: str,

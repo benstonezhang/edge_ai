@@ -8,9 +8,17 @@ import torch
 def onnx_show(model_file: str):
     import onnx
 
-    model = onnx.load(model_file)
-    for item in model.graph.node:
+    for item in onnx.load(model_file).graph.node:
         print(item.name)
+
+
+def onnx_export(model, model_file: str, batch_size: int, img_height: int, img_width: int, opset: int):
+    pixel_values = torch.randn(batch_size, 3, img_height, img_width, dtype=model.model.dtype)
+    print('pixel_values:', pixel_values.shape)
+    vision_model = model.get_vision().eval()
+    out = vision_model(pixel_values)
+    print('vision output:', out.shape)
+    torch.onnx.export(vision_model, (pixel_values,), model_file, input_names=['pixel'], opset_version=opset)
 
 
 def onnx_verify(model_file: str, img_height: int, img_width: int, image_path: str):
@@ -24,17 +32,6 @@ def onnx_verify(model_file: str, img_height: int, img_width: int, image_path: st
     img_tensor = transforms.PILToTensor()(image)
     out = sess.run(None, {input_name: [img_tensor]})[0]
     print('verify vision output:', out.shape)
-
-
-def onnx_export(model, model_file: str, batch_size: int, img_height: int, img_width: int, opset: int, image_path=None):
-    pixel_values = torch.randn(batch_size, 3, img_height, img_width, dtype=torch.float32)
-    print('pixel_values:', pixel_values.shape)
-    vision_model = model.get_vision().eval()
-    out = vision_model(pixel_values)
-    print('vision output:', out.shape)
-    torch.onnx.export(vision_model, (pixel_values,), model_file, input_names=['pixel'], opset_version=opset)
-    if image_path is not None:
-        onnx_verify(model_file, img_height, img_width, image_path)
 
 
 def rknn_export(onnx_model: str, target_platform: str, rknn_model: str, mean_values: list[float],
@@ -111,33 +108,49 @@ def main(args: argparse.Namespace):
 
     img_height, img_width = (int(x) for x in args.image_size.split('x'))
     optimization_level = 1
-
     model_name = args.model_name.replace('/', '-')
-    vision_onnx = os.path.join(args.data_path, f'{model_name}_vision.onnx')
-    vision_rknn = os.path.join(args.data_path, f'{model_name}_{args.target_platform}_vision.rknn')
-    inputs_json = os.path.join(args.data_path, 'inputs.json')
-    model_rkllm = os.path.join(args.data_path,
+
+    os.makedirs(args.out_path, mode=0o755, exist_ok=True)
+    vision_onnx = os.path.join(args.out_path, f'{model_name}_vision.onnx')
+    vision_rknn = os.path.join(args.out_path, f'{model_name}_{args.target_platform}_vision.rknn')
+    inputs_json = os.path.join(args.out_path, f'{model_name}_inputs.json')
+    model_rkllm = os.path.join(args.out_path,
                                f'{model_name}_{args.target_platform}_{quantized_dtype}_{quantized_algorithm}.rkllm')
 
-    model = None
-
-    if not os.path.exists(vision_onnx):
-        model = from_pretrained(args.model_name).eval() if model is None else model
-        onnx_export(model, vision_onnx, args.batch_size, img_height, img_width, args.opset,
-                    os.path.join(args.data_path, 'demo.jpg') if args.verify_onnx else None)
-
-    if args.show_onnx:
-        onnx_show(vision_onnx)
-
     if not os.path.exists(vision_rknn):
-        model = from_pretrained(args.model_name).eval() if model is None else model
-        rknn_export(vision_onnx, args.target_platform, vision_rknn, model.vision_mean, model.vision_std)
+        model = from_pretrained(args.model_name, device_map='cpu', torch_dtype=torch.float32,
+                                batch_size=args.batch_size, height=img_height, width=img_width).eval()
+
+        if not os.path.exists(vision_onnx):
+            onnx_export(model, vision_onnx, args.batch_size, img_height, img_width, args.opset)
+
+        vision_mean = model.vision_mean
+        vision_std = model.vision_std
+        del model
+
+        if args.verify_onnx:
+            onnx_verify(vision_onnx, img_height, img_width, os.path.join(args.data_path, 'demo.jpg'))
+
+        if args.show_onnx:
+            onnx_show(vision_onnx)
+
+        rknn_export(vision_onnx, args.target_platform, vision_rknn, vision_mean, vision_std)
 
     if not check_json_valid(inputs_json):
-        model = from_pretrained(args.model_name).eval() if model is None else model
-        generate_tokens(model, args.model_name, args.data_path, inputs_json)
+        device_map = None
+        if torch.cuda.is_available():
+            device_map = 'cuda'
+        elif torch.backends.mps.is_available():
+            device_map = 'mps'
 
-    if model is not None:
+        if device_map is not None:
+            model = from_pretrained(args.model_name, device_map=device_map, torch_dtype=torch.bfloat16,
+                                    batch_size=args.batch_size, height=img_height, width=img_width).eval()
+        else:
+            model = from_pretrained(args.model_name, batch_size=args.batch_size, height=img_height,
+                                    width=img_width).eval()
+
+        generate_tokens(model, args.model_name, args.data_path, inputs_json)
         del model
 
     if not os.path.exists(model_rkllm):
@@ -158,7 +171,6 @@ def main(args: argparse.Namespace):
             print('Load model failed!')
             exit(ret)
 
-        print('Building rkllm model ...')
         ret = llm.build(do_quantization=True,
                         optimization_level=optimization_level,
                         quantized_dtype=quantized_dtype,
@@ -187,6 +199,7 @@ if __name__ == '__main__':
     argparse.add_argument('--model_name', type=str, default='google/gemma-3n-e2b', help='model name', required=False)
     argparse.add_argument('--opset', type=int, default=19, help='onnx opset', required=False)
     argparse.add_argument('--data_path', type=str, default='data', help='data folder', required=False)
+    argparse.add_argument('--out_path', type=str, default='out', help='output folder', required=False)
     argparse.add_argument('--batch_size', type=int, default=1, help='batch size', required=False)
     argparse.add_argument('--image_size', type=str, default='480x480',
                           help='image size in format [height x width] or [height,width], default is 480x480',
