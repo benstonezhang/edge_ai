@@ -1,69 +1,52 @@
 import torch
-from transformers import Gemma3nForConditionalGeneration, Gemma3nModel, AutoProcessor
 from typing_extensions import override
 
 from .base import MultiModalModel
 
 
 class Gemma3nVisionForOnnx(torch.nn.Module):
-    def __init__(self, vlm: Gemma3nModel):
+    def __init__(self, vlm):
         super().__init__()
-        self.vpm = vlm
-        # self.vpm = vlm.vision_tower
-        # self.embed = vlm.embed_vision
-        # self.hidden_size = vlm.config.vision_config.hidden_size
-        # self.vision_soft_tokens_per_image = vlm.config.vision_soft_tokens_per_image
+        self.vlm = vlm
 
     def forward(self, pixel_values):
         return self.vlm.get_image_features(pixel_values)
-        # vision_outputs = self.vpm(pixel_values=pixel_values, do_pooling=False,
-        #                           return_dict=True).last_hidden_state
-        # # Convert from (batch, channels, height, width) to (batch, height * width, channels) where:
-        # # height == width and height * width == Gemma3nConfig.vision_soft_tokens_per_image.
-        # vision_outputs = vision_outputs.reshape(vision_outputs.shape[0], self.hidden_size,
-        #                                         self.vision_soft_tokens_per_image).permute(0, 2, 1)
-        # # Normalize and embed the soft tokens into language model space.
-        # vision_outputs *= self.hidden_size ** 0.5
-        # image_hidden_states = self.embed(inputs_embeds=vision_outputs)
-        # print('image_features:', image_hidden_states.shape)
-        # return image_hidden_states
 
 
 class Gemma3nMultiModalModel(MultiModalModel):
+    vision_mean = [123.675, 116.28, 103.53]
+    vision_std = [58.395, 58.395, 58.395]
+    image_size = (768, 768)
+    image_token = '<image_soft_token>'
+    generation_config = {'max_new_tokens': 1024, 'do_sample': False}
+    output_prefix_with_prompt = True
+
     @override
     @classmethod
     def from_pretrained(cls, *args, batch_size=1, height=None, width=None, **kwargs):
+        from transformers import Gemma3nForConditionalGeneration
+
         self = cls.__new__(cls)
         self.generation_model = Gemma3nForConditionalGeneration.from_pretrained(*args, **kwargs)
         self.model = self.generation_model.model
         return self
 
     @override
-    def eval(self):
-        self.generation_model.eval()
-        return self
-
-    @override
     def get_vision(self):
         return Gemma3nVisionForOnnx(self.model)
 
-    @property
-    def vision_mean(self):
-        return [123.675, 116.28, 103.53]
-
-    @property
-    def vision_std(self):
-        return [58.395, 58.395, 58.395]
-
     @override
-    def get_input_embeddings(self, processor: AutoProcessor, text_input: str,
-                             image_input=None, audio_input=None, audio_input_mask=None):
-        inputs = processor(text='<image_soft_token> ' + text_input,
-                           images=[image_input],
+    def get_input_embeddings(self, processor, text_input: str, image_input: str,
+                             audio_input=None, audio_input_mask=None):
+        from PIL import Image
+
+        image = Image.open(image_input)
+        inputs = processor(text=['<image_soft_token> ' + text_input],
+                           images=[image],
                            padding=True,
                            return_tensors='pt').to(self.model.device)
-
         input_ids = inputs['input_ids']
+        pixel_values = inputs['pixel_values']
 
         inputs_embeds = self.model.get_input_embeddings()(input_ids)
 
@@ -84,13 +67,10 @@ class Gemma3nMultiModalModel(MultiModalModel):
         expanded_audio_mask = audio_mask.unsqueeze(-1).expand_as(inputs_embeds)
         inputs_embeds = torch.where(expanded_audio_mask, audio_embeds, inputs_embeds)
 
-        if image_input is not None:
-            pixel_values = inputs['pixel_values']
-            image_features = self.model.get_image_features(pixel_values).to(inputs_embeds.device, inputs_embeds.dtype)
-            special_image_mask, _ = self.model.get_placeholder_mask(input_ids,
-                                                                    inputs_embeds=inputs_embeds,
-                                                                    image_features=image_features)
-            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+        image_features = self.model.get_image_features(pixel_values).to(inputs_embeds.device, inputs_embeds.dtype)
+        special_image_mask, _ = self.model.get_placeholder_mask(input_ids, inputs_embeds=inputs_embeds,
+                                                                image_features=image_features)
+        inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
 
         if audio_input is not None and audio_input_mask is not None:
             audio_features, audio_mask = self.model.get_audio_features(audio_input, ~audio_input_mask)
