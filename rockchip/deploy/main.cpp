@@ -191,11 +191,13 @@ static uint64_t get_timestamp() {
 	return ((uint64_t)ts.tv_sec) * 1000000 + ts.tv_nsec / 1000;
 }
 
+static const int mtmd_max_context_len = 4096;
+static const int mtmd_max_new_tokens = 256;
 static const char *mtmd_system_prompt = "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n";
 static const char *mtmd_prompt_prefix = "<|im_start|>user\n";
 static const char *mtmd_prompt_postfix = "<|im_end|>\n<|im_start|>assistant\n";
-static int save_image = 0;
-static int save_embed = 0;
+static int debug_level = 0;
+
 static LLMHandle llmHandle = nullptr;
 
 static const struct option long_options[] = {
@@ -204,20 +206,21 @@ static const struct option long_options[] = {
 	{"max_context_len", required_argument, NULL, 'l'},
 	{"max_new_tokens", required_argument, NULL, 'n'},
 	{"chat_template", optional_argument, NULL, 't'},
-	{"img_token", required_argument, NULL, 'm'},
+	{"img_tokens", required_argument, NULL, 'm'},
 	{"img_size", required_argument, NULL, 's'},
-	{"save_image", no_argument, &save_image, 1},
-	{"save_embed", no_argument, &save_embed, 1},
+	{"debug_level", optional_argument, NULL, 'd'},
 	{NULL, 0, NULL, 0}};
 
 static void usage(const char *name) {
-	printf("Usage: %s [options] image_path encoder_model_path llm_model_path\n", name);
-	puts("  --core_num          NPU core number: 2 for rk3588, 2 for rt3576, 1 for others\n"
-		 "  --max_context_len   max of total context length, default is 4095\n"
-		 "  --max_new_tokens    max tokens the model will generate, default is 255\n"
-		 "  --chat_template     chat template file if rkllm can't retrieve from model\n"
-		 "  --img_tokens        default is <|vision_start|>,<|vision_end|>,<|image_pad|>\n"
-		 "  --img_size          optional image size as format Height,Weight");
+	printf("Usage: %s [options] image_path encoder_model_path llm_model_path\n"
+	       "  --core_num          NPU core number: 2 for rk3588, 2 for rt3576, 1 for others\n"
+		   "  --max_context_len   max of total context length, default is %d\n"
+		   "  --max_new_tokens    max tokens the model will generate, default is %d\n"
+		   "  --chat_template     chat template file if rkllm can't retrieve from model\n"
+		   "  --img_tokens        default is <|vision_start|>,<|image_pad|>,<|vision_end|>\n"
+		   "  --img_size          optional image size as int or string as height,weight\n"
+		   "  --debug_level       debug level, for developing purpose\n\n",
+		   name, mtmd_max_context_len, mtmd_max_new_tokens);
 	exit(0);
 }
 
@@ -272,7 +275,7 @@ static cv::Mat img_load(const char *image_path, const int image_width, const int
 	cv::Mat input_img = cv::Mat(cv::Size(image_width, image_height), CV_8UC3, cv::Scalar(127, 127, 127));
 	cv::Mat scaled_img = cv::Mat(input_img, cv::Rect(x, y, width, height));
 	cv::resize(img, scaled_img, cv::Size(scaled_img.cols, scaled_img.rows));
-	if (save_image)
+	if (debug_level)
 		cv::imwrite("image.jpg", input_img);
 
 	return input_img;
@@ -292,13 +295,13 @@ int main(int argc, char **argv) {
 
 	RKLLMParam param = rkllm_createDefaultParam();
 	param.top_k = 1;
-	param.max_context_len = 4096;
-	param.max_new_tokens = 256;
+	param.max_context_len = mtmd_max_context_len;
+	param.max_new_tokens = mtmd_max_new_tokens;
 	param.skip_special_token = true;
 	param.extend_param.base_domain_id = 1;
 	param.img_start = "<|vision_start|>";
-	param.img_end = "<|vision_end|>";
 	param.img_content = "<|image_pad|>";
+	param.img_end = "<|vision_end|>";
 
 	int argv_off = 1;
 	while (true) {
@@ -336,8 +339,8 @@ int main(int argc, char **argv) {
 			char *ch2 = strchr(ch1, ',');
 			if (ch2 == NULL)
 				usage(argv[0]);
-			param.img_end = strndup(ch1, ch2 - ch1);
-			param.img_content = strdup(ch2 + 1);
+			param.img_content = strndup(ch1, ch2 - ch1);
+			param.img_end = strdup(ch2 + 1);
 			break;
 		}
 		case 's': {
@@ -353,14 +356,20 @@ int main(int argc, char **argv) {
 			}
 			break;
 		}
+		case 'd':
+		    debug_level = optarg == NULL? 1: (int)strtol(optarg, NULL, 10);
+    		break;
 		case '?':
 		default:
 			usage(argv[0]);
 		}
 	}
-	puts("args:");
-	for (int i = argv_off; i < argc; i++)
-		printf("  %s\n", argv[i]);
+
+	if (debug_level) {
+	    puts("args:");
+    	for (int i = argv_off; i < argc; i++)
+	    	printf("  %s\n", argv[i]);
+    }
 
 	if (argc < argv_off + 3)
 		usage(argv[0]);
@@ -430,7 +439,7 @@ int main(int argc, char **argv) {
 	if (ret != 0)
 		printf("imgenc_release fail! ret=%d\n", ret);
 
-	if (save_embed) {
+	if (debug_level) {
 		FILE *f = fopen("img_vec.bin", "wb");
 		if (f != NULL) {
 			fwrite(img_vec, sizeof(img_vec), 1, f);
