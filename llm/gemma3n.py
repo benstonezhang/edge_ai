@@ -1,50 +1,44 @@
 import torch
 from typing_extensions import override
 
-from .base import MultiModalModel
-
-
-class Gemma3nVisionForOnnx(torch.nn.Module):
-    def __init__(self, vlm):
-        super().__init__()
-        self.vlm = vlm
-
-    def forward(self, pixel_values):
-        return self.vlm.get_image_features(pixel_values)
+from .model import MultiModalModel, VisionModelForOnnx
 
 
 class Gemma3nMultiModalModel(MultiModalModel):
     vision_mean = [123.675, 116.28, 103.53]
     vision_std = [58.395, 58.395, 58.395]
-    image_size = (768, 768)
+    image_size = 768
     image_token = '<image_soft_token>'
     generation_config = {'max_new_tokens': 1024, 'do_sample': False}
-    output_prefix_with_prompt = True
+    output_need_trim = True
 
     @override
     @classmethod
-    def from_pretrained(cls, *args, batch_size=1, height=None, width=None, **kwargs):
+    def from_pretrained(cls, model_name: str, load_processor: bool, *args, **kwargs):
         from transformers import Gemma3nForConditionalGeneration
 
         self = cls.__new__(cls)
-        self.generation_model = Gemma3nForConditionalGeneration.from_pretrained(*args, **kwargs)
+        self.generation_model = Gemma3nForConditionalGeneration.from_pretrained(model_name, *args, **kwargs)
         self.model = self.generation_model.model
+        if load_processor:
+            from transformers import Gemma3nProcessor
+
+            self.processor = Gemma3nProcessor.from_pretrained(model_name, **self.processor_config)
         return self
 
     @override
     def get_vision(self):
-        return Gemma3nVisionForOnnx(self.model)
+        return VisionModelForOnnx(self.model)
 
     @override
-    def get_input_embeddings(self, processor, text_input: str, image_input: str,
-                             audio_input=None, audio_input_mask=None):
+    def get_input_embeddings(self, text_input: str, image_input: str, audio_input=None, audio_input_mask=None):
         from PIL import Image
 
         image = Image.open(image_input)
-        inputs = processor(text=['<image_soft_token> ' + text_input],
-                           images=[image],
-                           padding=True,
-                           return_tensors='pt').to(self.model.device)
+        inputs = self.processor(text=[self.image_token + text_input],
+                                images=[image],
+                                padding=True,
+                                return_tensors='pt').to(self.model.device)
         input_ids = inputs['input_ids']
         pixel_values = inputs['pixel_values']
 
@@ -96,3 +90,9 @@ class Gemma3nMultiModalModel(MultiModalModel):
             inputs_embeds = inputs_embeds.masked_scatter(special_audio_mask, audio_features)
 
         return inputs_embeds
+
+    @override
+    def generate(self, **inputs):
+        generate_ids = self.generation_model.generate(**inputs)
+        input_len = inputs["input_ids"].shape[-1]
+        return generate_ids[0][input_len:].unsqueeze(0)

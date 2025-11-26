@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="gemma-3n_export_llm" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="minicpm_v_2.6_export_rknn" type="PythonConfigurationType" factoryName="Python">
     <module name="Quant" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
@@ -8,15 +8,15 @@
       <env name="PYTHONUNBUFFERED" value="1" />
       <env name="HF_ENDPOINT" value="https://hf-mirror.com" />
     </envs>
-    <option name="SDK_HOME" value="$USER_HOME$/.pyenv/ml/bin/python" />
+    <option name="SDK_HOME" value="" />
     <option name="SDK_NAME" value="ml" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/rockchip/export_llm.py" />
-    <option name="PARAMETERS" value="--model_name=google/gemma-3n-E2B-it" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/rockchip/export_rknn.py" />
+    <option name="PARAMETERS" value="--model_name=OpenBMB/MiniCPM-V-2_6 --out_dir=out/minicpm_v_2.6" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

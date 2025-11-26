@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="qwen-2.5_export_rknn" type="PythonConfigurationType" factoryName="Python">
-    <module name="Quant" />
+  <configuration default="false" name="qwen-2_infer" type="PythonConfigurationType" factoryName="Python">
+    <module name="edge_ai" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
@@ -9,14 +9,12 @@
       <env name="HF_ENDPOINT" value="https://hf-mirror.com" />
     </envs>
     <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="ml" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-    <option name="IS_MODULE_SDK" value="false" />
+    <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
-    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/rockchip/export_rknn.py" />
-    <option name="PARAMETERS" value="--model_name=Qwen/Qwen2.5-VL-3B-Instruct --out_dir=out/qwen2.5" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/infer_transformers.py" />
+    <option name="PARAMETERS" value="--model_name=Qwen/Qwen2-VL-2B-Instruct --image_path=$USER_HOME$/Downloads/huggingface_bee.jpg --cpu" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

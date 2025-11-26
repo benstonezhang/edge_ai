@@ -15,25 +15,20 @@ def check_json_valid(f: str):
     return False
 
 
-def generate_tokens(model_name: str, img_height: int, img_width: int, data_path: str, inputs_json: str):
+def generate_tokens(model_name: str, data_dir: str, inputs_json: str):
     from tqdm import tqdm
-    from transformers import AutoProcessor
 
     from llm.utils import from_pretrained, get_device_and_dtype
 
     device_map, torch_dtype = get_device_and_dtype()
-    model = from_pretrained(args.model_name, device_map=device_map, torch_dtype=torch_dtype,
-                            batch_size=args.batch_size, height=img_height, width=img_width).eval()
-    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True, **model.tokenizer_config)
-    datasets = json.load(open(os.path.join(data_path, 'datasets.json'), 'r'))
+    model = from_pretrained(args.model_name, device_map=device_map, torch_dtype=torch_dtype).eval()
+    datasets = json.load(open(os.path.join(data_dir, 'datasets.json'), 'r'))
     first_line = True
-    with open(inputs_json, 'w') as json_file, tqdm(datasets) as bar:
+    with open(inputs_json, 'w') as json_file:
         json_file.write('[\n')
-        for data in datasets:
-            image_file = os.path.join(data_path, 'datasets', data['image'])
-            inputs_embeds = model.get_input_embeddings(processor=processor, text_input=data['input'],
-                                                       image_input=image_file)
-            bar.write(f'inputs_embeds {inputs_embeds.shape}')
+        for data in tqdm(datasets):
+            image_file = os.path.join(data_dir, 'datasets', data['image'])
+            inputs_embeds = model.get_input_embeddings(text_input=data['input'], image_input=image_file)
 
             if first_line:
                 first_line = False
@@ -43,15 +38,10 @@ def generate_tokens(model_name: str, img_height: int, img_width: int, data_path:
                 'input_embed': inputs_embeds.tolist(),
                 'target': data['target'],
             }, json_file)
-
-            bar.update()
-
         json_file.write('\n]')
 
 
 def main(args: argparse.Namespace):
-    from llm.utils import bare_model
-
     if args.target_platform == 'rk3588':
         num_npu_core = 3
         quantized_dtype = 'w8a8'
@@ -70,25 +60,16 @@ def main(args: argparse.Namespace):
 
     optimization_level = 1
 
-    os.makedirs(args.out_path, mode=0o755, exist_ok=True)
+    data_dir = os.path.realpath(args.data_dir)
+    os.makedirs(args.out_dir, mode=0o755, exist_ok=True)
+    os.chdir(args.out_dir)
 
     model_name = args.model_name.replace('/', '-').lower()
-    inputs_json = os.path.join(args.out_path, f'{model_name}_inputs.json')
-    model_rkllm = os.path.join(args.out_path,
-                               f'{model_name}_{args.target_platform}_{quantized_dtype}_{quantized_algorithm}.rkllm')
-
-    model = bare_model(args.model_name)
-
-    if model.image_size is not None:
-        img_height, img_width = model.image_size
-    else:
-        img_height, img_width = (int(x) for x in args.image_size.split('x'))
-
-    del model
+    inputs_json = f'{model_name}_inputs.json'
+    model_rkllm = f'{model_name}_{args.target_platform}_{quantized_dtype}_{quantized_algorithm}.rkllm'
 
     if not check_json_valid(inputs_json):
-        generate_tokens(model_name=args.model_name, img_height=img_height, img_width=img_width,
-                        data_path=args.data_path, inputs_json=inputs_json)
+        generate_tokens(model_name=args.model_name, data_dir=data_dir, inputs_json=inputs_json)
 
     if not os.path.exists(model_rkllm):
         from llm.utils import get_model_path
@@ -133,11 +114,9 @@ def main(args: argparse.Namespace):
 if __name__ == '__main__':
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--model_name', type=str, default=None, help='model name', required=True)
-    argparse.add_argument('--data_path', type=str, default='data', help='data folder', required=False)
-    argparse.add_argument('--out_path', type=str, default='out', help='output folder', required=False)
+    argparse.add_argument('--data_dir', type=str, default='data', help='data folder', required=False)
+    argparse.add_argument('--out_dir', type=str, default='out', help='output folder', required=False)
     argparse.add_argument('--batch_size', type=int, default=1, help='batch size', required=False)
-    argparse.add_argument('--image_size', type=str, default=None,
-                          help='image size in format [height x width], default is retrieve from model', required=False)
     argparse.add_argument('--target_platform', type=str, default='rk3576',
                           help='target platform, choose from [rk3588, rk3576, rk3562, rk3566, rk3568, rk2118, rv1106, rv1103, rv1126b]',
                           required=False)

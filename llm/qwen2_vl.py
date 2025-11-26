@@ -1,7 +1,7 @@
 import torch
 from typing_extensions import override
 
-from .base import MultiModalModel
+from .model import MultiModalModel
 
 
 class Qwen2_VLVisionForOnnx(torch.nn.Module):
@@ -19,30 +19,26 @@ class Qwen2_VLVisionForOnnx(torch.nn.Module):
         self.grid_t = (batch_size + self.temporal_patch_size - 1) // self.temporal_patch_size
         self.grid_h = height // self.patch_size
         self.grid_w = width // self.patch_size
-        self.grid_thw = torch.tensor([[self.grid_t, self.grid_h, self.grid_w]])
-        self.rotary_pos_emb = None
-        self.cu_seqlens = None
+
+        grid_thw = torch.tensor([[self.grid_t, self.grid_h, self.grid_w]], dtype=torch.int64)
+        rotary_pos_emb = self.vpm.rot_pos_emb(grid_thw).cpu().detach().numpy()
+        cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2],
+                                             grid_thw[:, 0]).cumsum(dim=0, dtype=torch.int32)
+        cu_seqlens = torch.nn.functional.pad(cu_seqlens, (1, 0), value=0).cpu().detach().numpy()
+
+        def forward(hidden_states):
+            hidden_states = self.vpm.patch_embed(hidden_states)
+            emb = torch.from_numpy(rotary_pos_emb).to(dtype=hidden_states.dtype, device=hidden_states.device)
+            emb = torch.cat((emb, emb), dim=-1)
+            seqlens = torch.from_numpy(cu_seqlens).to(dtype=torch.int32, device=hidden_states.device)
+            for blk in self.vpm.blocks:
+                hidden_states = blk(hidden_states, cu_seqlens=seqlens,
+                                    position_embeddings=(emb.cos(), emb.sin()))
+            return self.vpm.merger(hidden_states)
+
+        self.vpm.forward = forward
 
     def forward(self, pixel_values):
-        if self.rotary_pos_emb is None or self.cu_seqlens is None:
-            self.rotary_pos_emb = self.vpm.rot_pos_emb(self.grid_thw).cpu().detach().numpy()
-            cu_seqlens = torch.repeat_interleave(self.grid_thw[:, 1] * self.grid_thw[:, 2],
-                                                 self.grid_thw[:, 0]).cumsum(dim=0, dtype=torch.int32)
-            self.cu_seqlens = torch.nn.functional.pad(cu_seqlens, (1, 0), value=0).cpu().detach().numpy()
-
-            def forward(hidden_states):
-                hidden_states = self.vpm.patch_embed(hidden_states)
-                rotary_pos_emb = torch.from_numpy(self.rotary_pos_emb).to(dtype=hidden_states.dtype,
-                                                                          device=hidden_states.device)
-                emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
-                cu_seqlens = torch.from_numpy(self.cu_seqlens).to(dtype=torch.int32, device=hidden_states.device)
-                for blk in self.vpm.blocks:
-                    hidden_states = blk(hidden_states, cu_seqlens=cu_seqlens,
-                                        position_embeddings=(emb.cos(), emb.sin()))
-                return self.vpm.merger(hidden_states)
-
-            self.vpm.forward = forward
-
         if self.batch_size == 1:
             pixel_inputs = pixel_values.repeat(self.temporal_patch_size, 1, 1, 1)
         elif self.batch_size % self.temporal_patch_size != 0:
@@ -71,33 +67,34 @@ class Qwen2_VLVisionForOnnx(torch.nn.Module):
 class Qwen2_VLMultiModalModel(MultiModalModel):
     vision_mean = [0.48145466 * 255, 0.4578275 * 255, 0.40821073 * 255]
     vision_std = [0.26862954 * 255, 0.26130258 * 255, 0.27577711 * 255]
-    image_size = (448, 448)
-    tokenizer_config = {"use_fast": False, "min_pixels": 256 * 28 * 28, "max_pixels": 2048 * 28 * 28}
+    image_size = 448
+    # image_tokens = '<|vision_start|><|image_pad|>...<|vision_end|>'
+    processor_config = {"use_fast": False, "min_pixels": 256 * 28 * 28, "max_pixels": 2048 * 28 * 28}
 
     @override
     @classmethod
-    def from_pretrained(cls, *args, batch_size=1, height=None, width=None, **kwargs):
+    def from_pretrained(cls, model_name: str, load_processor: bool, *args, **kwargs):
         from transformers import Qwen2VLForConditionalGeneration
 
         self = cls.__new__(cls)
-        self.generation_model = Qwen2VLForConditionalGeneration.from_pretrained(*args, **kwargs)
+        self.generation_model = Qwen2VLForConditionalGeneration.from_pretrained(model_name, *args, **kwargs)
         self.model = self.generation_model.model
-        self.batch_size = batch_size
-        self.height = height
-        self.width = width
         self.vision_model = self.generation_model.visual if hasattr(self.generation_model, 'visual') \
             else self.model.visual
         self.embed_tokens = self.model.embed_tokens if hasattr(self.model, 'embed_tokens') \
             else self.model.language_model.embed_tokens
+        if load_processor:
+            from transformers import Qwen2VLProcessor
+
+            self.processor = Qwen2VLProcessor.from_pretrained(model_name, **self.processor_config)
         return self
 
     @override
     def get_vision(self):
-        return Qwen2_VLVisionForOnnx(self.vision_model, self.batch_size, self.height, self.width)
+        return Qwen2_VLVisionForOnnx(self.vision_model, 1, self.image_size, self.image_size)
 
     @override
-    def get_input_embeddings(self, processor, text_input: str, image_input: str,
-                             audio_input=None, audio_input_mask=None):
+    def get_input_embeddings(self, text_input: str, image_input: str, audio_input=None, audio_input_mask=None):
         from PIL import Image
 
         conversation = [
@@ -111,10 +108,11 @@ class Qwen2_VLMultiModalModel(MultiModalModel):
         ]
 
         # Preprocess the inputs
-        text_prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+        text_prompt = self.processor.apply_chat_template(conversation, add_generation_prompt=True)
         # Excepted output: '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe this image.<|im_end|>\n<|im_start|>assistant\n'
         image = Image.open(image_input)
-        inputs = processor(text=[text_prompt], images=[image], padding=True, return_tensors="pt").to(self.model.device)
+        inputs = self.processor(text=[text_prompt], images=[image], padding=True, return_tensors="pt").to(
+                self.model.device)
 
         inputs_embeds = self.embed_tokens(inputs["input_ids"])
         pixel_values = inputs["pixel_values"].type(self.vision_model.dtype)

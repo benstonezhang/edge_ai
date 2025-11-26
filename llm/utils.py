@@ -40,15 +40,15 @@ def bare_model(model_name: str):
 # 注意此处的数据类型，由于 rknn 目前仅支持 float32 ，因此需要指定
 # 若是在加载权重时限制了数据类型，需要自行修改config.json中的 "use_flash_attn" 参数为 false
 def from_pretrained(model_name: str,
-                    device_map='auto',
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
+                    load_processor: bool = True,
+                    device_map: str = 'auto',
+                    low_cpu_mem_usage: bool = True,
                     **kwargs):
     return _get_model_cls(model_name).from_pretrained(
             model_name,
+            load_processor,
             device_map=device_map,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            trust_remote_code=trust_remote_code,
             **kwargs)
 
 
