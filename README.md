@@ -17,6 +17,6 @@ Tools to deploy LLM to edge devices
 
 Notes:
 
-google/gemma-3 need add "`--img_tokens="<start_of_image>,<image_soft_token>,<end_of_image>`"
+google/gemma-3 need add `--img_tokens='<start_of_image>,<image_soft_token>,<end_of_image>'`
 
-HuggingFaceTB/SmolVLM2 need add "`--chat_template`"
+HuggingFaceTB/SmolVLM2 need add `--chat_template`
