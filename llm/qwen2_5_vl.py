@@ -11,53 +11,49 @@ class Qwen2_5_VLVisionForOnnx(torch.nn.Module):
     channel = 3
 
     def __init__(self, vpm, batch_size, height, width):
+        import numpy as np
+
         super().__init__()
         self.vpm = vpm
         self.batch_size = batch_size
         self.grid_t = (batch_size + self.temporal_patch_size - 1) // self.temporal_patch_size
         self.grid_h = height // self.patch_size
         self.grid_w = width // self.patch_size
+        grid_thw = np.array([[self.grid_t, self.grid_h, self.grid_w]])
 
-        # grid_thw = torch.tensor([[self.grid_t, self.grid_h, self.grid_w]], device=vpm.device, dtype=torch.int64)
-        # rotary_pos_emb = vpm.rot_pos_emb(grid_thw).cpu().detach().numpy()
-        # window_index, cu_window_seqlens = vpm.get_window_index(grid_thw)
-        # window_index = window_index.cpu().detach().numpy()
-        # cu_window_seqlens = torch.tensor(cu_window_seqlens, device=grid_thw.device, dtype=torch.int32)
-        # cu_window_seqlens = torch.unique_consecutive(cu_window_seqlens).cpu().detach().numpy()
-        # cu_seqlens = torch.repeat_interleave(grid_thw[:, 1] * grid_thw[:, 2], grid_thw[:, 0]
-        #                                      ).cumsum(dim=0, dtype=torch.int32)
-        # cu_seqlens = torch.nn.functional.pad(cu_seqlens, (1, 0), value=0).cpu().detach().numpy()
-        #
-        # def forward(hidden_states):
-        #     hidden_states = vpm.patch_embed(hidden_states)
-        #
-        #     emb = torch.from_numpy(rotary_pos_emb).to(dtype=hidden_states.dtype, device=hidden_states.device)
-        #     w_idx = torch.from_numpy(window_index).to(dtype=torch.int32, device=hidden_states.device)
-        #     w_seqlens = torch.from_numpy(cu_window_seqlens).to(dtype=torch.int32, device=hidden_states.device)
-        #     seqlens = torch.from_numpy(cu_seqlens).to(dtype=torch.int32, device=hidden_states.device)
-        #
-        #     seq_len, _ = hidden_states.size()
-        #     hidden_states = hidden_states.reshape(seq_len // vpm.spatial_merge_unit, vpm.spatial_merge_unit, -1)
-        #     hidden_states = hidden_states[w_idx, :, :]
-        #     hidden_states = hidden_states.reshape(seq_len, -1)
-        #     emb = emb.reshape(seq_len // vpm.spatial_merge_unit, vpm.spatial_merge_unit, -1)
-        #     emb = emb[w_idx, :, :]
-        #     emb = emb.reshape(seq_len, -1)
-        #     emb = torch.cat((emb, emb), dim=-1)
-        #     position_embeddings = (emb.cos(), emb.sin())
-        #
-        #     for layer_num, blk in enumerate(vpm.blocks):
-        #         hidden_states = blk(hidden_states,
-        #                             cu_seqlens=seqlens if layer_num in vpm.fullatt_block_indexes else w_seqlens,
-        #                             position_embeddings=position_embeddings)
-        #
-        #     hidden_states = vpm.merger(hidden_states)
-        #     reverse_indices = torch.argsort(w_idx)
-        #     hidden_states = hidden_states[reverse_indices, :]
-        #
-        #     return hidden_states
-        #
-        # self.vpm.forward = forward
+        def forward(pixel_values, **kwargs):
+            hidden_states = vpm.patch_embed(pixel_values)
+            rotary_pos_emb = vpm.rot_pos_emb(grid_thw)
+            window_index, cu_window_seqlens = vpm.get_window_index(grid_thw)
+            cu_window_seqlens = torch.tensor(cu_window_seqlens, device=hidden_states.device, dtype=torch.int32)
+            cu_window_seqlens = torch.unique_consecutive(cu_window_seqlens)
+
+            seq_len, _ = hidden_states.size()
+            hidden_states = hidden_states.reshape(seq_len // vpm.spatial_merge_unit, vpm.spatial_merge_unit, -1)
+            hidden_states = hidden_states[window_index, :, :]
+            hidden_states = hidden_states.reshape(seq_len, -1)
+            rotary_pos_emb = rotary_pos_emb.reshape(seq_len // vpm.spatial_merge_unit, vpm.spatial_merge_unit, -1)
+            rotary_pos_emb = rotary_pos_emb[window_index, :, :]
+            rotary_pos_emb = rotary_pos_emb.reshape(seq_len, -1)
+            emb = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=-1)
+            position_embeddings = (emb.cos(), emb.sin())
+
+            cu_seqlens = torch.repeat_interleave(torch.asarray(self.grid_h * self.grid_w), torch.asarray(self.grid_t)
+                                                 ).cumsum(dim=0, dtype=torch.int32)
+            cu_seqlens = torch.nn.functional.pad(cu_seqlens, (1, 0), value=0)
+
+            for layer_num, blk in enumerate(vpm.blocks):
+                hidden_states = blk(hidden_states,
+                                    cu_seqlens=cu_seqlens if layer_num in vpm.fullatt_block_indexes else cu_window_seqlens,
+                                    position_embeddings=position_embeddings, **kwargs)
+
+            hidden_states = vpm.merger(hidden_states)
+            reverse_indices = torch.argsort(window_index)
+            hidden_states = hidden_states[reverse_indices, :]
+
+            return hidden_states
+
+        self.vpm.forward = forward
 
     def forward(self, pixel_values):
         pixel_values = pixel_values.type(self.vpm.dtype)
@@ -69,7 +65,6 @@ class Qwen2_5_VLVisionForOnnx(torch.nn.Module):
             pixel_inputs = torch.cat((pixel_values, repeat_image), dim=0)
         else:
             pixel_inputs = pixel_values
-        grid_thw = torch.tensor([[self.grid_t, self.grid_h, self.grid_w]], device=self.vpm.device, dtype=torch.int64)
         patches = pixel_inputs.reshape(self.grid_t, self.temporal_patch_size, self.channel,
                                        self.grid_h // self.merge_size, self.merge_size, self.patch_size,
                                        self.grid_w // self.merge_size, self.merge_size, self.patch_size)
@@ -77,7 +72,7 @@ class Qwen2_5_VLVisionForOnnx(torch.nn.Module):
         flatten_patches = patches.reshape(self.grid_t * self.grid_h * self.grid_w,
                                           self.channel * self.temporal_patch_size * self.patch_size * self.patch_size)
 
-        return self.vpm(flatten_patches, grid_thw=grid_thw)
+        return self.vpm(flatten_patches)
 
 
 # The default range for the number of visual tokens per image in the model is 4-16384.You can set min_pixels and
@@ -124,14 +119,15 @@ class Qwen2_5_VLMultiModalModel(MultiModalModel):
     #                               Qwen2_5_VLMultiModalModel.image_size // Qwen2_5_VLVisionForOnnx.patch_size]],
     #                             dtype=torch.int64)
     #     onnx_export_config = {
-    #         'input_names': ['pixel'],
-    #         'dynamic_axes': {'pixel': {2: 'height', 3: 'width'}},
+    #         'input_names': [*MultiModalModel.onnx_input_names, 'grid_thw'],
+    #         'output_names': MultiModalModel.onnx_output_names,
+    #         # 'dynamic_axes': {'pixel': {2: 'height', 3: 'width'}},
     #         # 'dynamic_shapes': {'pixel': {2: 'height', 3: 'width'}},
     #     }
     #     return (grid_thw,), onnx_export_config
-    #
+
     # @staticmethod
-    # def get_onnx_load_config(batch_size):
+    # def get_rknn_config(batch_size):
     #     return {
     #         'inputs': [*MultiModalModel.onnx_input_names, 'grid_thw'],
     #         'input_size_list': [

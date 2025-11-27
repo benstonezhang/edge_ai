@@ -389,8 +389,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	printf("Tokens: img_start_token=%s, img_end_token=%s, img_content_token=%s\n",
-		   param.img_start, param.img_end, param.img_content);
+	printf("Tokens: img_start_token=%s, img_content_token=%s, img_end_token=%s\n",
+		   param.img_start, param.img_content, param.img_end);
 
 	int ret;
 	uint64_t t_start_us, t_end_us;

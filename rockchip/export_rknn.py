@@ -1,5 +1,6 @@
 import argparse
 import os
+import typing
 
 import torch
 
@@ -17,13 +18,13 @@ def onnx_export(model_name: str, batch_size: int, img_height: int, img_width: in
         forward_args, export_conf = model.get_vision_forward_params(batch_size)
     else:
         forward_args = tuple()
-        export_conf = {'input_names': model.onnx_input_names}
+        export_conf = {'input_names': model.onnx_input_names, 'output_names': model.onnx_output_names}
 
-    out = vision_model(pixel_values)
+    out = vision_model(pixel_values, *forward_args)
     print('vision output:', out.shape)
     torch.onnx.export(vision_model, (pixel_values, *forward_args), model_file, opset_version=opset, **export_conf)
-    # torch.onnx.export(vision_model, (pixel_values,), model_file, opset_version=opset,
-    #                   dynamo=True, optimize=True, fallback=True)
+    # torch.onnx.export(vision_model, (pixel_values, *forward_args), model_file, opset_version=opset,
+    #                   dynamo=True, optimize=True, fallback=True, **export_conf)
 
 
 def onnx_show(model_file: str):
@@ -52,13 +53,13 @@ def onnx_verify(model_file: str, img_height: int, img_width: int, image_path: st
 
 
 def rknn_export(onnx_model: str, target_platform: str, rknn_model: str,
-                mean_values: list[float], std_values: list[float], **onnx_load_config):
+                mean_values: list[float], std_values: list[float], rknn_onnx_config: typing.Dict):
     from rknn.api import RKNN
 
-    rknn = RKNN(verbose=False)
+    rknn = RKNN(verbose=args.debug)
     rknn.config(target_platform=target_platform, mean_values=mean_values, std_values=std_values)
-    rknn.load_onnx(onnx_model, **onnx_load_config)
-    rknn.build(do_quantization=False, dataset=None)
+    rknn.load_onnx(onnx_model, **rknn_onnx_config)
+    rknn.build(do_quantization=False, dataset=None, rknn_batch_size=1)
     rknn.export_rknn(rknn_model)
 
 
@@ -85,7 +86,7 @@ def main(args: argparse.Namespace):
     vision_mean = model.vision_mean
     vision_std = model.vision_std
     img_height, img_width = model.get_image_height_and_width()
-    onnx_load_config = model.get_onnx_load_config(args.batch_size) if hasattr(model, 'get_onnx_load_config') else {}
+    rknn_onnx_config = model.get_rknn_config(args.batch_size) if hasattr(model, 'get_rknn_config') else {}
     del model
 
     if args.model_name is not None and not os.path.exists(vision_onnx):
@@ -100,7 +101,7 @@ def main(args: argparse.Namespace):
         onnx_verify(model_file=vision_onnx, img_height=img_height, img_width=img_width, image_path=demo_image)
 
     rknn_export(onnx_model=vision_onnx, target_platform=args.target_platform, rknn_model=vision_rknn,
-                mean_values=vision_mean, std_values=vision_std, **onnx_load_config)
+                mean_values=vision_mean, std_values=vision_std, rknn_onnx_config=rknn_onnx_config)
 
 
 if __name__ == '__main__':
@@ -117,6 +118,7 @@ if __name__ == '__main__':
                           required=False)
     argparse.add_argument('--show_onnx', action='store_true', help='show onnx model nodes')
     argparse.add_argument('--verify_onnx', action='store_true', help='verify onnx model')
+    argparse.add_argument('--debug', action='store_true', help='debug code')
     args = argparse.parse_args()
 
     main(args)

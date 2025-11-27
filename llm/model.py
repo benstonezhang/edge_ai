@@ -17,6 +17,8 @@ class MultiModalModel(ABC):
     processor_config = {"use_fast": True}
     generation_config = {'max_new_tokens': 1024}
     onnx_input_names = ['pixel']
+    onnx_output_names = ['features']
+    onnx_export_conf = {'input_names': onnx_input_names, 'output_names': onnx_output_names}
 
     def __init__(self):
         super().__init__()
