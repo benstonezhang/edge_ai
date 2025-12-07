@@ -7,21 +7,21 @@ from transformers import AutoConfig, AutoProcessor
 
 from llm.utils import get_device_and_dtype, get_model_path
 
-argparse = argparse.ArgumentParser()
-argparse.add_argument('--model_name', type=str, default='google/gemma-3n-E2B-it', help='model name', required=False)
-argparse.add_argument('--model_dir', type=str, default='onnx-community/gemma-3n-E2B-it-ONNX',
-                      help='onnx model folder', required=False)
-argparse.add_argument('--embed_tokens', type=str, default='embed_tokens_quantized.onnx',
-                      help='embed_tokens model file name', required=False)
-argparse.add_argument('--audio_encoder', type=str, default='audio_encoder.onnx',
-                      help='audio_encoder model file name', required=False)
-argparse.add_argument('--audio_path', type=str, default=None, help='audio file path', required=False)
-argparse.add_argument('--vision_encoder', type=str, default='vision_encoder.onnx',
-                      help='vision_encoder model file name', required=False)
-argparse.add_argument('--image_path', type=str, default=None, help='image file path', required=False)
-argparse.add_argument('--decoder_model_merged', type=str, default='decoder_model_merged_q4.onnx',
-                      help='decoder_model_merged model file name', required=False)
-args = argparse.parse_args()
+parser = argparse.ArgumentParser()
+parser.add_argument('--model_name', type=str, default='google/gemma-3n-E2B-it', help='model name', required=False)
+parser.add_argument('--model_dir', type=str, default='onnx-community/gemma-3n-E2B-it-ONNX',
+                    help='onnx model folder', required=False)
+parser.add_argument('--embed_tokens', type=str, default='embed_tokens_quantized.onnx',
+                    help='embed_tokens model file name', required=False)
+parser.add_argument('--audio_encoder', type=str, default='audio_encoder_quantized.onnx',
+                    help='audio_encoder model file name', required=False)
+parser.add_argument('--audio_path', type=str, default=None, help='audio file path', required=False)
+parser.add_argument('--vision_encoder', type=str, default='vision_encoder_quantized.onnx',
+                    help='vision_encoder model file name', required=False)
+parser.add_argument('--image_path', type=str, default=None, help='image file path', required=False)
+parser.add_argument('--decoder_model_merged', type=str, default='decoder_model_merged_q4.onnx',
+                    help='decoder_model_merged model file name', required=False)
+args = parser.parse_args()
 
 model_dir = args.model_dir
 if not os.path.exists(model_dir):
@@ -68,6 +68,8 @@ messages = [
         ],
     },
 ]
+# text_prompt = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+# <bos><start_of_turn>user\nIn detail, describe the following audio and image.<audio_soft_token><image_soft_token><end_of_turn>\n<start_of_turn>model
 inputs = processor.apply_chat_template(
         messages,
         add_generation_prompt=True,

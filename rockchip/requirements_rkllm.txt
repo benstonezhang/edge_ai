@@ -78,7 +78,7 @@ PyYAML==6.0.3
 referencing==0.37.0
 regex==2025.11.3
 requests==2.32.5
-rkllm-toolkit==1.2.2
+rkllm-toolkit==1.2.3
 rouge==1.0.1
 rpds-py==0.28.0
 safetensors==0.5.3

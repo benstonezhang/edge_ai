@@ -213,7 +213,7 @@ static const struct option long_options[] = {
 
 static void usage(const char *name) {
 	printf("Usage: %s [options] image_path encoder_model_path llm_model_path\n"
-	       "  --core_num          NPU core number: 2 for rk3588, 2 for rt3576, 1 for others\n"
+		   "  --core_num          NPU core number: 2 for rk3588, 2 for rt3576, 1 for others\n"
 		   "  --max_context_len   max of total context length, default is %d\n"
 		   "  --max_new_tokens    max tokens the model will generate, default is %d\n"
 		   "  --chat_template     chat template file if rkllm can't retrieve from model\n"
@@ -357,8 +357,8 @@ int main(int argc, char **argv) {
 			break;
 		}
 		case 'd':
-		    debug_level = optarg == NULL? 1: (int)strtol(optarg, NULL, 10);
-    		break;
+			debug_level = optarg == NULL ? 1 : (int)strtol(optarg, NULL, 10);
+			break;
 		case '?':
 		default:
 			usage(argv[0]);
@@ -366,10 +366,10 @@ int main(int argc, char **argv) {
 	}
 
 	if (debug_level) {
-	    puts("args:");
-    	for (int i = argv_off; i < argc; i++)
-	    	printf("  %s\n", argv[i]);
-    }
+		puts("args:");
+		for (int i = argv_off; i < argc; i++)
+			printf("  %s\n", argv[i]);
+	}
 
 	if (argc < argv_off + 3)
 		usage(argv[0]);
@@ -472,6 +472,14 @@ int main(int argc, char **argv) {
 	vector<string> pre_input;
 	pre_input.push_back("<image>What is in the image?");
 	pre_input.push_back("<image>这张图片中有什么？");
+	pre_input.push_back("<image>请识别图片中是否有火灾，并严格按照如下JSON格式输出，不要输出多余内容；如果有浓烟，也判断为有火灾：\n"
+						"{\n"
+						"  \"fire\": true为有火灾；false为无火灾,\n"
+						"  \"fire_confidence\": 火灾的置信度0-1.0之间,\n"
+						"  \"no_fire_confidence\": 无火灾的置信度0-1.0之间,\n"
+						"  \"reason\": \"判断理由\"\n"
+						"}\n"
+						"图片内容：");
 	puts("\n****************** 可输入以下问题对应序号获取回答/或自定义输入 ****************");
 	for (int i = 0; i < (int)pre_input.size(); i++)
 		printf("[%d] %s\n", i, pre_input[i].c_str());

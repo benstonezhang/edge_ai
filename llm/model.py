@@ -19,6 +19,7 @@ class MultiModalModel(ABC):
     onnx_input_names = ['pixel']
     onnx_output_names = ['features']
     onnx_export_conf = {'input_names': onnx_input_names, 'output_names': onnx_output_names}
+    dynamo_compatible = True
 
     def __init__(self):
         super().__init__()

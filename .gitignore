@@ -7,3 +7,5 @@
 *.pyo
 *.egg
 __pycache__
+/.pyenv
+/out

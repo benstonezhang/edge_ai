@@ -50,6 +50,7 @@ class Qwen2_5_VLVisionForOnnx(Qwen_VLVisionForOnnx):
 
 class Qwen2_5_VLMultiModalModel(Qwen_VLMultiModalModel):
     processor_config = {**Qwen_VLMultiModalModel.processor_config, "use_fast": False}
+    dynamo_compatible = False
 
     @override
     @classmethod
@@ -73,28 +74,3 @@ class Qwen2_5_VLMultiModalModel(Qwen_VLMultiModalModel):
     @override
     def get_vision(self):
         return Qwen2_5_VLVisionForOnnx(self.vision_model, 1, self.image_size, self.image_size)
-
-    # @staticmethod
-    # def get_vision_forward_params(batch_size):
-    #     grid_thw = torch.tensor([[(batch_size + Qwen2_5_VLVisionForOnnx.temporal_patch_size - 1
-    #                                ) // Qwen2_5_VLVisionForOnnx.temporal_patch_size,
-    #                               Qwen2_5_VLMultiModalModel.image_size // Qwen2_5_VLVisionForOnnx.patch_size,
-    #                               Qwen2_5_VLMultiModalModel.image_size // Qwen2_5_VLVisionForOnnx.patch_size]],
-    #                             dtype=torch.int64)
-    #     onnx_export_config = {
-    #         'input_names': [*MultiModalModel.onnx_input_names, 'grid_thw'],
-    #         'output_names': MultiModalModel.onnx_output_names,
-    #         # 'dynamic_axes': {'pixel': {2: 'height', 3: 'width'}},
-    #         # 'dynamic_shapes': {'pixel': {2: 'height', 3: 'width'}},
-    #     }
-    #     return (grid_thw,), onnx_export_config
-
-    # @staticmethod
-    # def get_rknn_config(batch_size):
-    #     return {
-    #         'inputs': [*MultiModalModel.onnx_input_names, 'grid_thw'],
-    #         'input_size_list': [
-    #             [batch_size, 3, Qwen2_5_VLMultiModalModel.image_size, Qwen2_5_VLMultiModalModel.image_size],
-    #             [batch_size, 3]
-    #         ]
-    #     }

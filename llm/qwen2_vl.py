@@ -28,6 +28,7 @@ class Qwen2_VLVisionForOnnx(Qwen_VLVisionForOnnx):
 
 class Qwen2_VLMultiModalModel(Qwen_VLMultiModalModel):
     processor_config = {**Qwen_VLMultiModalModel.processor_config, "use_fast": False}
+    dynamo_compatible = False
 
     @override
     @classmethod

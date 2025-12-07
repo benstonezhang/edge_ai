@@ -81,7 +81,9 @@ class Qwen_VLMultiModalModel(MultiModalModel):
         inputs_embeds = self.embed_tokens(inputs["input_ids"])
         pixel_values = inputs["pixel_values"].type(self.vision_model.dtype)
         image_mask = inputs["input_ids"] == self.model.config.image_token_id
-        image_embeds, _ = self.vision_model(pixel_values, grid_thw=inputs["image_grid_thw"])
+        image_embeds = self.vision_model(pixel_values, grid_thw=inputs["image_grid_thw"])
+        if isinstance(image_embeds, tuple):
+            image_embeds = image_embeds[0]
         inputs_embeds[image_mask] = image_embeds.to(inputs_embeds.device)
 
         return inputs_embeds

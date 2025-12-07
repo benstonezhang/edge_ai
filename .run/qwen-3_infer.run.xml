@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="gemma-3_export_rkllm" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="qwen-3_infer" type="PythonConfigurationType" factoryName="Python">
     <module name="edge_ai" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
@@ -9,14 +9,12 @@
       <env name="HF_ENDPOINT" value="https://hf-mirror.com" />
     </envs>
     <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="rkllm" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-    <option name="IS_MODULE_SDK" value="false" />
+    <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
-    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/rockchip/export_rkllm.py" />
-    <option name="PARAMETERS" value="--model_name=google/gemma-3-4b-it --out_dir=out/gemma3" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/infer_transformers.py" />
+    <option name="PARAMETERS" value="--model_name=Qwen/Qwen3-VL-4B-Thinking --image_path=$USER_HOME$/Downloads/huggingface_bee.jpg --cpu" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

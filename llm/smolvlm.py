@@ -24,6 +24,7 @@ class SmolVLMMultiModalModel(MultiModalModel):
     # image_tokens = '<image>'
     processor_config = {"use_fast": False}
     output_need_trim = True
+    dynamo_compatible = False
 
     @override
     @classmethod

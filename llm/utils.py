@@ -20,6 +20,8 @@ def _get_model_cls(model_name: str):
         from .qwen2_vl import Qwen2_VLMultiModalModel as model
     elif name[:10] == 'qwen2.5-vl':
         from .qwen2_5_vl import Qwen2_5_VLMultiModalModel as model
+    elif name[:8] == 'qwen3-vl':
+        from .qwen3_vl import Qwen3_VLMultiModalModel as model
     elif name[:13] == 'minicpm-v-2_6':
         from .minicpm_v_2_6 import MiniCPMV2_6MultiModalModel as model
     elif name[:7] == 'smolvlm':
@@ -44,6 +46,12 @@ def from_pretrained(model_name: str,
                     device_map: str = 'auto',
                     low_cpu_mem_usage: bool = True,
                     **kwargs):
+    import torch
+
+    if torch.__version__ < '2.6':
+        kwargs['torch_dtype'] = kwargs['dtype']
+        del kwargs['dtype']
+
     return _get_model_cls(model_name).from_pretrained(
             model_name,
             load_processor,
