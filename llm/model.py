@@ -14,10 +14,10 @@ class MultiModalModel(ABC):
     vision_mean = [127.5, 127.5, 127.5]
     vision_std = [63.75, 63.75, 63.75]
     image_size = None
-    processor_config = {"use_fast": True}
+    processor_config = {}
     generation_config = {'max_new_tokens': 1024}
-    onnx_input_names = ['pixel']
-    onnx_output_names = ['features']
+    onnx_input_names = ['pixel_values']
+    onnx_output_names = ['image_features']
     onnx_export_conf = {'input_names': onnx_input_names, 'output_names': onnx_output_names}
     dynamo_compatible = True
 
