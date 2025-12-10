@@ -10,14 +10,14 @@
       <env name="PYTHONPATH" value="$PROJECT_DIR$" />
     </envs>
     <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="rkllm" />
+    <option name="SDK_NAME" value="Python 3.13 virtualenv at ~/.pyenv/llm" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/rockchip/export_rkllm.py" />
-    <option name="PARAMETERS" value="--model_name=Qwen/Qwen3-VL-4B-Thinking --out_dir=out/qwen2" />
+    <option name="PARAMETERS" value="--model_name=Qwen/Qwen3-VL-4B-Instruct --out_dir=out/qwen3" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

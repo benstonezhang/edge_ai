@@ -22,7 +22,7 @@ if args.cpu:
 else:
     device_map, torch_dtype = get_device_and_dtype()
 
-model = from_pretrained(args.model_name, device_map=device_map, dtype=torch_dtype).eval()
+model = from_pretrained(args.model_name, load_processor=True, device_map=device_map, dtype=torch_dtype).eval()
 
 if hasattr(model, 'image_token'):
     text_prompt = f'{model.image_token} ${args.prompt}'

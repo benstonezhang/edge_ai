@@ -20,7 +20,7 @@ def generate_tokens(model_name: str, data_dir: str, inputs_json: str):
     from llm.utils import from_pretrained, get_device_and_dtype
 
     device_map, torch_dtype = get_device_and_dtype()
-    model = from_pretrained(model_name, device_map=device_map, dtype=torch_dtype).eval()
+    model = from_pretrained(model_name, load_processor=True, device_map=device_map, dtype=torch_dtype).eval()
     datasets = json.load(open(os.path.join(data_dir, 'datasets.json'), 'r'))
     first_line = True
     with open(inputs_json, 'w') as json_file:

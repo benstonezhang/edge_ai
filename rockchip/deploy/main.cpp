@@ -170,17 +170,30 @@ static int imgenc_run(rknn_app_context_t *app_ctx, void *img_data, float *out_re
 	}
 
 	// Get Output
-	app_ctx->outputs[0].want_float = 1;
-	ret = rknn_outputs_get(app_ctx->rknn_ctx, 1, app_ctx->outputs, NULL);
+	for (int i = 0; i < app_ctx->io_num.n_output; i++)
+		app_ctx->outputs[i].want_float = 1;
+	ret = rknn_outputs_get(app_ctx->rknn_ctx, app_ctx->io_num.n_output, app_ctx->outputs, NULL);
 	if (ret < 0) {
 		printf("rknn_outputs_get fail! ret=%d\n", ret);
-	} else {
-		// Post Process
-		memcpy(out_result, app_ctx->outputs[0].buf, app_ctx->outputs[0].size);
-
-		// Remeber to release rknn output
-		rknn_outputs_release(app_ctx->rknn_ctx, 1, app_ctx->outputs);
+		return -1;
 	}
+
+	// Post Process
+	if (app_ctx->io_num.n_output == 1)
+		memcpy(out_result, app_ctx->outputs[0].buf, app_ctx->outputs[0].size);
+	else {
+		// concat deepstacks and input_embed
+		for (int i = 0; i < app_ctx->model_image_token; i++) {
+			for (int j = 0; j < app_ctx->io_num.n_output; j++) {
+				memcpy(out_result + (i * app_ctx->io_num.n_output + j) * app_ctx->model_embed_size,
+					   (float *)(app_ctx->outputs[j].buf) + i * app_ctx->model_embed_size,
+					   sizeof(float) * app_ctx->model_embed_size);
+			}
+		}
+	}
+
+	// Remeber to release rknn output
+	rknn_outputs_release(app_ctx->rknn_ctx, app_ctx->io_num.n_output, app_ctx->outputs);
 
 	return ret;
 }
@@ -424,7 +437,7 @@ int main(int argc, char **argv) {
 	printf("Load and preprocess the image cost %.2f ms\n", (t_end_us - t_start_us) / 1000.0);
 
 	model_image_token = rknn_app_ctx.model_image_token;
-	float img_vec[model_image_token * rknn_app_ctx.model_embed_size];
+	float img_vec[model_image_token * rknn_app_ctx.model_embed_size * rknn_app_ctx.io_num.n_output];
 
 	t_start_us = get_timestamp();
 	ret = imgenc_run(&rknn_app_ctx, input_img.data, img_vec);

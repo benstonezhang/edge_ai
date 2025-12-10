@@ -1,6 +1,22 @@
 import torch
 
 
+def onnx_show_shape(out):
+    if torch.is_tensor(out):
+        print('vision output:', out.shape)
+    else:
+        shapes = []
+        for o in out:
+            if torch.is_tensor(o):
+                shapes.append(o.shape)
+                continue
+            shapes.append('[')
+            for _ in o:
+                shapes.append(_.shape)
+            shapes.append(']')
+        print('vision output:', *shapes)
+
+
 def onnx_export(model_name: str, batch_size: int, img_height: int, img_width: int, model_file: str, opset: int):
     from llm.utils import from_pretrained
 
@@ -17,7 +33,7 @@ def onnx_export(model_name: str, batch_size: int, img_height: int, img_width: in
         export_conf = model.onnx_export_conf
 
     out = vision_model(pixel_values, *forward_args)
-    print('vision output:', out.shape)
+    onnx_show_shape(out)
     if model.dynamo_compatible:
         torch.onnx.export(vision_model, (pixel_values, *forward_args), model_file, opset_version=opset,
                           dynamo=True, optimize=True, fallback=True, **export_conf)
@@ -48,7 +64,7 @@ def onnx_verify(model_file: str, img_height: int, img_width: int, image_path: st
     input_name = sess.get_inputs()[0].name
     img_tensor = transforms.PILToTensor()(image)
     out = sess.run(None, {input_name: [img_tensor]})[0]
-    print('verify vision output:', out.shape)
+    onnx_show_shape(out)
 
 
 def arg_parser():
